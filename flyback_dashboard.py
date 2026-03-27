@@ -59,6 +59,7 @@ def calculate_flyback_performance(p, v_ac_rms, load_pct=1.0):
     # 1. Base Variables
     i_out_step = p['i_out'] * load_pct
     p_out_step = p['v_out'] * i_out_step
+    t_res = 0.0 # Default initialization
     
     # Target values for mode calculation (uses system target efficiency)
     p_in_target = p_out_step / p['eta_target']
@@ -194,7 +195,8 @@ def calculate_flyback_performance(p, v_ac_rms, load_pct=1.0):
         "p_blocking": p_blocking,
         "p_output_filter_total": p_lf51 + p_outcap,
         "v_sw_final": v_sw_final,
-        "i_outcap_rms": i_outcap_rms
+        "i_outcap_rms": i_outcap_rms,
+        "t_res": t_res
     }
     return results
 
@@ -485,6 +487,7 @@ i_outcap_rms = main_res["i_outcap_rms"]
 f_sw = main_res["f_sw_khz"] * 1000.0
 i_s_pk = main_res["i_p_pk"] * (n_p/n_s) # Derived
 v_ro = (n_p/n_s) * v_out
+t_res = main_res.get("t_res", 0.0)
 warnings = [] # Warnings logic could be added to helper
 if op_mode == "QR":
     st.sidebar.info(f"QR 計算頻率: {main_res['f_sw_khz']:.2f} kHz")
