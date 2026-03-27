@@ -8,6 +8,7 @@ import json
 from io import BytesIO
 from fpdf import FPDF
 import os
+import re
 from datetime import datetime
 
 # Page Config
@@ -216,6 +217,13 @@ if uploaded_file is not None:
 def get_val(key, default):
     return st.session_state.config.get(key, default)
 
+def clean_text_for_pdf(text):
+    """Remove non-ASCII characters and special symbols for FPDF compatibility."""
+    if not isinstance(text, str):
+        text = str(text)
+    # Keep only ASCII printable characters
+    return re.sub(r'[^\x00-\x7F]+', '', text).strip()
+
 def create_pdf_report(params, results, chart_img=None):
     class PDF(FPDF):
         def footer(self):
@@ -228,62 +236,51 @@ def create_pdf_report(params, results, chart_img=None):
 
     pdf = PDF()
     pdf.add_page()
-    
-    # Try to load Traditional Chinese Font (Microsoft JhengHei)
-    font_path = "C:/Windows/Fonts/msjh.ttc"
-    has_zh = False
-    if os.path.exists(font_path):
-        try:
-            pdf.add_font("MSJH", "", font_path)
-            pdf.add_font("MSJH", "B", font_path)
-            pdf.set_font("MSJH", "B", 22)
-            has_zh = True
-        except:
-            pdf.set_font("Helvetica", "B", 22)
-    else:
-        pdf.set_font("Helvetica", "B", 22)
+    pdf.set_font("Helvetica", "B", 22)
 
     # 1. Enterprise Header (Deep Blue)
     pdf.set_fill_color(41, 128, 185)
     pdf.rect(0, 0, 210, 40, "F")
     pdf.set_text_color(255, 255, 255)
     
-    title_text = "Flyback 電源設計評估報告" if has_zh else "Flyback Design Evaluation Report"
+    title_text = "Flyback Design Evaluation Report"
     pdf.set_y(15)
     pdf.cell(0, 10, txt=title_text, ln=True, align="C")
     pdf.set_text_color(0, 0, 0)
     pdf.set_y(45)
 
-    def draw_section_header(title_zh, title_en):
+    def draw_section_header(title_en):
         pdf.set_fill_color(236, 240, 241)
         pdf.set_draw_color(41, 128, 185)
         pdf.set_line_width(0.5)
-        pdf.set_font("MSJH" if has_zh else "Helvetica", "B", 13)
-        display_title = title_zh if has_zh else title_en
-        pdf.cell(0, 10, txt=f" {display_title}", ln=True, fill=True, border="TB")
+        pdf.set_font("Helvetica", "B", 13)
+        pdf.cell(0, 10, txt=f" {title_en}", ln=True, fill=True, border="TB")
         pdf.ln(3)
 
     # Section 1: System Specifications
-    draw_section_header("1. 系統規格 (System Specifications)", "1. System Specifications")
+    draw_section_header("1. System Specifications")
     
     specs = [
-        ("運作模式 (Mode)", params['op_mode']),
-        ("選用 MOSFET", params.get('selected_mosfet', 'N/A')),
-        ("最小輸入電壓 (Vac_min)", f"{params['v_ac_min']} Vrms"),
-        ("最大輸入電壓 (Vac_max)", f"{params['v_ac_max']} Vrms"),
-        ("輸出電壓 (Vout)", f"{params['v_out']} V"),
-        ("輸出電流 (Iout)", f"{params['i_out']} A"),
-        ("工作頻率 (fsw)", f"{params.get('f_sw_input', '--')} kHz"),
-        ("目標效率 (Target Eta)", f"{params['eta_target_percent']}%")
+        ("Mode", params['op_mode']),
+        ("MOSFET", params.get('selected_mosfet', 'N/A')),
+        ("Vac_min", f"{params['v_ac_min']} Vrms"),
+        ("Vac_max", f"{params['v_ac_max']} Vrms"),
+        ("Vout", f"{params['v_out']} V"),
+        ("Iout", f"{params['i_out']} A"),
+        ("fsw", f"{params.get('f_sw_input', '--')} kHz"),
+        ("Target Eta", f"{params['eta_target_percent']}%")
     ]
     
     fill = False
     for label, val in specs:
         pdf.set_fill_color(248, 249, 250)
-        pdf.set_font("MSJH" if has_zh else "Helvetica", "B", 10)
-        pdf.cell(95, 8, txt=f" {label}:", border=0, fill=fill)
-        pdf.set_font("MSJH" if has_zh else "Helvetica", size=11)
-        pdf.cell(0, 8, txt=str(val), border=0, ln=True, fill=fill)
+        pdf.set_font("Helvetica", "B", 10)
+        # Apply cleaning to ensure no Unicode issues
+        clean_label = clean_text_for_pdf(label)
+        clean_val = clean_text_for_pdf(val)
+        pdf.cell(95, 8, txt=f" {clean_label}:", border=0, fill=fill)
+        pdf.set_font("Helvetica", size=11)
+        pdf.cell(0, 8, txt=clean_val, border=0, ln=True, fill=fill)
         pdf.set_draw_color(230, 230, 230)
         pdf.line(10, pdf.get_y(), 200, pdf.get_y())
         fill = not fill
@@ -291,34 +288,36 @@ def create_pdf_report(params, results, chart_img=None):
     pdf.ln(8)
 
     # Section 2: Power Loss & Efficiency Evaluation
-    draw_section_header("2. 功耗與效率評估 (Loss & Efficiency)", "2. Power Loss & Efficiency")
+    draw_section_header("2. Power Loss & Efficiency")
     
     perf = [
-        ("輸出功率 (Pout)", f"{results['p_out']:.2f} W", False),
-        ("總體損耗 (Total Loss)", f"{results['total_loss']:.3f} W", True),
-        ("輸入功率 (Pin)", f"{results['p_in']:.3f} W", False),
-        ("預估效率 (Efficiency)", f"{results['efficiency']:.2f} %", True)
+        ("Pout", f"{results['p_out']:.2f} W", False),
+        ("Total Loss", f"{results['total_loss']:.3f} W", True),
+        ("Pin", f"{results['p_in']:.3f} W", False),
+        ("Efficiency", f"{results['efficiency']:.2f} %", True)
     ]
 
     fill = False
     for label, val, highlight in perf:
         pdf.set_fill_color(248, 249, 250)
         if highlight:
-            pdf.set_font("MSJH" if has_zh else "Helvetica", "B", 12)
+            pdf.set_font("Helvetica", "B", 12)
             pdf.set_text_color(41, 128, 185)
         else:
-            pdf.set_font("MSJH" if has_zh else "Helvetica", "B", 10)
+            pdf.set_font("Helvetica", "B", 10)
             pdf.set_text_color(0, 0, 0)
             
-        pdf.cell(95, 10, txt=f" {label}:", border=0, fill=fill)
+        clean_label = clean_text_for_pdf(label)
+        clean_val = clean_text_for_pdf(val)
+        pdf.cell(95, 10, txt=f" {clean_label}:", border=0, fill=fill)
         
         if highlight:
-            pdf.set_font("MSJH" if has_zh else "Helvetica", "B", 14)
+            pdf.set_font("Helvetica", "B", 14)
             pdf.set_text_color(30, 132, 73) 
         else:
-            pdf.set_font("MSJH" if has_zh else "Helvetica", size=11)
+            pdf.set_font("Helvetica", size=11)
             
-        pdf.cell(0, 10, txt=str(val), border=0, ln=True, fill=fill)
+        pdf.cell(0, 10, txt=clean_val, border=0, ln=True, fill=fill)
         pdf.set_text_color(0, 0, 0)
         pdf.set_draw_color(230, 230, 230)
         pdf.line(10, pdf.get_y(), 200, pdf.get_y())
@@ -327,7 +326,7 @@ def create_pdf_report(params, results, chart_img=None):
     pdf.ln(10)
 
     # 3. Characteristic Curves
-    draw_section_header("3. 特性曲線 (Characteristic Curves)", "3. Characteristic Curves")
+    draw_section_header("3. Characteristic Curves")
     if chart_img:
         try:
             pdf.image(chart_img, x=20, w=170)
