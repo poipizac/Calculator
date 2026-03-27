@@ -359,7 +359,12 @@ v_ac_min = st.sidebar.number_input("最小交流輸入電壓 V_AC_min (Vrms)", v
 v_ac_max = st.sidebar.number_input("最大交流輸入電壓 V_AC_max (Vrms)", value=float(get_val("v_ac_max", 264.0)), step=1.0)
 v_out = st.sidebar.number_input("輸出電壓 V_out (V)", value=float(get_val("v_out", 12.0)), step=0.1)
 i_out = st.sidebar.number_input("額定負載 I_out (A)", value=float(get_val("i_out", 5.0)), step=0.1)
-f_sw_input = st.sidebar.number_input("工作頻率 f_sw (kHz)", value=float(get_val("f_sw_input", 65.0)), step=1.0, disabled=(op_mode == "QR"))
+if op_mode != "QR":
+    f_sw_input = st.sidebar.number_input("工作頻率 f_sw (kHz)", value=float(get_val("f_sw_input", 65.0)), step=1.0)
+else:
+    # In QR mode, frequency is calculated, but we keep the parameter for consistency
+    f_sw_input = float(get_val("f_sw_input", 65.0))
+    st.sidebar.info("💡 QR 模式：頻率將根據負載與諧振自動計算")
 eta_target = st.sidebar.slider("估計效率 η_target (%)", 50, 99, int(get_val("eta_target_percent", 85))) / 100.0
 f_line_min = st.sidebar.number_input("輸入電源頻率 f_line_min (Hz)", value=float(get_val("f_line_min", 47.0)), step=1.0)
 
@@ -390,10 +395,10 @@ with st.sidebar.expander("PWM MOSFET (主開關)"):
     selected_model = st.selectbox("選擇 MOSFET 型號", model_list, index=int(default_idx))
     
     if selected_model == "Custom...":
-        v_ds_sw = st.number_input("耐壓 Vds_SW (V)", value=float(get_val("v_ds_sw", 600.0)), step=10.0)
-        r_ds_on_sw = st.number_input("導通電阻 Rds_on_SW (Ω)", value=float(get_val("r_ds_on_sw", 0.21)), step=0.01)
-        c_oss_eff_pf = st.number_input("等效輸出電容 Coss_eff (pF)", value=float(get_val("c_oss_eff_pf", 180.0)), step=1.0)
-        q_g_sw = st.number_input("閘極電荷 Qg_SW (nC)", value=float(get_val("q_g_sw", 20.0)), step=1.0)
+        v_ds_sw = st.number_input("耐壓 Vds_SW (V)", value=float(get_val("v_ds_sw", 600.0)), step=10.0, format="%.1f")
+        r_ds_on_sw = st.number_input("導通電阻 Rds_on_SW (Ω)", value=float(get_val("r_ds_on_sw", 0.21)), step=0.0001, format="%.4f")
+        c_oss_eff_pf = st.number_input("等效輸出電容 Coss_eff (pF)", value=float(get_val("c_oss_eff_pf", 180.0)), step=1.0, format="%.1f")
+        q_g_sw = st.number_input("閘極電荷 Qg_SW (nC)", value=float(get_val("q_g_sw", 20.0)), step=1.0, format="%.1f")
         mosfet_data = {"Model": "Custom...", "Vds": v_ds_sw, "Rdson": r_ds_on_sw, "Coss": c_oss_eff_pf, "Qg": q_g_sw}
     else:
         mosfet_data = MOSFET_DB[MOSFET_DB["Model"] == selected_model].iloc[0]
@@ -418,10 +423,10 @@ with st.sidebar.expander("二極體/SR MOSFET"):
     selected_sr_model = st.selectbox("選擇 SR MOSFET 型號", sr_model_list, index=int(default_sr_idx))
     
     if selected_sr_model == "Custom...":
-        v_ds_sr = st.number_input("耐壓 Vds_SR (V)", value=float(get_val("v_ds_sr", 100.0)), step=10.0)
-        r_ds_on_sr = st.number_input("導通電阻 Rds_on_SR (Ω)", value=float(get_val("r_ds_on_sr", 0.01)), step=0.001)
-        c_oss_sr_pf = st.number_input("輸出電容 Coss_SR (pF)", value=float(get_val("c_oss_sr_pf", 500.0)), step=10.0)
-        q_g_sr = st.number_input("閘極電荷 Qg_SR (nC)", value=float(get_val("q_g_sr", 30.0)), step=1.0)
+        v_ds_sr = st.number_input("耐壓 Vds_SR (V)", value=float(get_val("v_ds_sr", 100.0)), step=10.0, format="%.1f")
+        r_ds_on_sr = st.number_input("導通電阻 Rds_on_SR (Ω)", value=float(get_val("r_ds_on_sr", 0.01)), step=0.0001, format="%.4f")
+        c_oss_sr_pf = st.number_input("輸出電容 Coss_SR (pF)", value=float(get_val("c_oss_sr_pf", 500.0)), step=1.0, format="%.1f")
+        q_g_sr = st.number_input("閘極電荷 Qg_SR (nC)", value=float(get_val("q_g_sr", 30.0)), step=1.0, format="%.1f")
         sr_mosfet_data = {"Model": "Custom...", "Vds": v_ds_sr, "Rdson": r_ds_on_sr, "Coss": c_oss_sr_pf, "Qg": q_g_sr}
     else:
         sr_mosfet_data = SR_MOSFET_DB[SR_MOSFET_DB["Model"] == selected_sr_model].iloc[0]
@@ -575,7 +580,10 @@ sr_row = sr_mosfet_data.copy()
 sr_row["Position"] = "Secondary (SR)"
 specs_display.append(sr_row)
 
-specs_df = pd.DataFrame(specs_display)
+# 強制將混搭的資料 (Series 與 Dict) 統一轉換為標準字典，徹底防呆
+clean_specs = [dict(item) for item in specs_display]
+specs_df = pd.DataFrame(clean_specs)
+
 specs_df = specs_df.rename(columns={
     "Position": "位置",
     "Model": "型號",
@@ -668,22 +676,24 @@ with st.expander("🎲 蒙地卡羅量產良率分析 (Monte Carlo Yield Analysi
     if st.button(f"執行 {n_simulations} 次蒙地卡羅模擬"):
         eff_results = []
         
-        # Nominal values
-        lm_nom = sys_params['l_m_uH']
-        rdson_nom = sys_params['r_ds_on_sw']
+        # Nominal values (direct from results or session state variables)
+        lm_nom = l_m_uH
+        rdson_nom = r_ds_on_sw
+        sr_rdson_nom = r_ds_on_sr
         
         # Generate normal distributions (3-sigma)
-        np.random.seed(42) # For reproducibility
+        np.random.seed(42)
         lm_samples = np.random.normal(lm_nom, lm_nom * (lm_tol/100)/3, n_simulations)
         rdson_samples = np.random.normal(rdson_nom, rdson_nom * (rdson_tol/100)/3, n_simulations)
+        # Note: can add SR tolerance here if needed in the loop
         
         # Simulation Loop
         progress_bar = st.progress(0)
         for i in range(n_simulations):
-            # Create a shallow copy and update drifted params
             sim_params = sys_params.copy()
             sim_params['l_m_uH'] = lm_samples[i]
             sim_params['r_ds_on_sw'] = rdson_samples[i]
+            # sim_params['r_ds_on_sr'] = ... (if adding SR tol slider)
             
             # Calculate at worst case: V_ac_min, 100% Load
             res = calculate_flyback_performance(sim_params, v_ac_min, load_pct=1.0)
